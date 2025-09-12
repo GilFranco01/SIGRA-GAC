@@ -13,7 +13,8 @@ from openpyxl.utils import get_column_letter
 # =========================
 # Config da página
 # =========================
-st.set_page_config(page_title="Validador Regulatório", layout="wide")
+st.set_page_config(
+    page_title="SIGRA - Sistema de Gestão Regulatória de Ativos", layout="wide")
 
 # =========================
 # Constantes
@@ -361,7 +362,7 @@ st.markdown(
     """
     <div class="header-wrap">
         <h1 class="header-title">Gerencia de Conformidade Regulatória de Ativos</h1>
-        <div class="header-sub">🔎 Validador de Conformidade Regulatória</div>
+        <div class="header-sub">🔎 SIGRA - Sistema de Gestão Regulatória de Ativos</div>
     </div>
     """,
     unsafe_allow_html=True,
