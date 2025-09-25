@@ -133,6 +133,43 @@ def _count_by(df: pd.DataFrame, by_cols: List[str]) -> pd.DataFrame:
     g = g.sort_values("Ocorrencias", ascending=False)
     return g
 
+# ==== Fallback de Treemap em Altair (quando Plotly não estiver disponível) ====
+def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str):
+    """
+    Gera treemap em Altair usando transform_treemap (Vega-Lite 5).
+    - data: DataFrame já agregado com a coluna 'size_col' (ex.: 'Ocorrencias').
+    - group_cols: hierarquia (ex.: [dir_exec_col, dir_col, '_Teste']).
+    """
+    # agrega (garante unicidade antes do transform)
+    agg = data.groupby(group_cols, dropna=False)[size_col].sum().reset_index()
+
+    # Vega-Lite espera nomes sem espaços para os 'groupby' em algumas versões;
+    # criamos aliases seguros
+    safe_map = {c: f"col_{i}" for i, c in enumerate(group_cols)}
+    df_safe = agg.rename(columns=safe_map).rename(columns={size_col: "size"})
+
+    ch = (
+        alt.Chart(df_safe)
+        .transform_treemap(size="size", groupby=list(safe_map.values()), method="squarify")
+        .mark_rect()
+        .encode(
+            x="x:Q", x2="x2:Q",
+            y="y:Q", y2="y2:Q",
+            color=alt.Color("size:Q", title="Ocorrências"),
+            tooltip=[
+                alt.Tooltip(f"{list(safe_map.values())[0]}:N", title=group_cols[0]),
+                alt.Tooltip(f"{list(safe_map.values())[1]}:N", title=group_cols[1]),
+                alt.Tooltip(f"{list(safe_map.values())[2]}:N", title=group_cols[2]),
+                alt.Tooltip("size:Q", title="Ocorrências"),
+            ],
+        )
+        .properties(height=520, width="container")
+    )
+
+    # Títulos legíveis nos eixos (treemap usa pixel space, então escondemos)
+    ch = ch.configure_axis(grid=False, labels=False, ticks=False, domain=False)
+    return ch
+
 # =========================
 # Modelo de teste
 # =========================
@@ -596,16 +633,17 @@ if uploaded_file:
                 else:
                     st.info("Gráfico requer coluna de **Diretoria Executiva**.")
 
-            # ② Treemap: Diretoria Executiva → Diretoria → Teste (Plotly)
+            # ② Treemap: Diretoria Executiva → Diretoria → Teste
             with tabs[1]:
                 if dir_exec_col and dir_col:
-                    try:
-                        import plotly.express as px
-                        # Constrói contagem em 3 níveis
-                        data_tree = _count_by(fails_df, [dir_exec_col, dir_col, "_Teste"])
-                        if data_tree.empty:
-                            st.info("Sem dados suficientes para o treemap.")
-                        else:
+                    # Constrói contagem em 3 níveis
+                    data_tree = _count_by(fails_df, [dir_exec_col, dir_col, "_Teste"])
+                    if data_tree.empty:
+                        st.info("Sem dados suficientes para o treemap.")
+                    else:
+                        # Tenta usar Plotly; se não houver, cai para Altair
+                        try:
+                            import plotly.express as px
                             fig = px.treemap(
                                 data_tree,
                                 path=[dir_exec_col, dir_col, "_Teste"],
@@ -616,8 +654,10 @@ if uploaded_file:
                             fig.update_traces(root_color="white")
                             fig.update_layout(margin=dict(t=40, l=0, r=0, b=0))
                             st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        st.error(f"Plotly não disponível ou houve erro ao gerar o treemap: {e}")
+                        except Exception as e:
+                            st.info("Plotly não encontrado; usando treemap em Altair automaticamente. ✅")
+                            ch = treemap_altair(data_tree, [dir_exec_col, dir_col, "_Teste"], "Ocorrencias")
+                            st.altair_chart(ch, use_container_width=True)
                 else:
                     st.info("Treemap requer **Diretoria Executiva** e **Diretoria**.")
 
