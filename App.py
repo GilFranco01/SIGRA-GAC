@@ -1,4 +1,5 @@
 # app.py
+import altair as alt
 import streamlit as st
 import pandas as pd
 import re
@@ -78,10 +79,11 @@ def autosize_columns(writer: pd.ExcelWriter, sheet_name: str):
         ws.column_dimensions[get_column_letter(
             col_idx)].width = min(max(length + 2, 12), 60)
 
+
 # =========================
 # Helpers para gráficos  (BLOCO 1)
 # =========================
-import altair as alt
+
 
 def _normalize_colnames(cols: Iterable[str]) -> List[str]:
     out = []
@@ -91,6 +93,7 @@ def _normalize_colnames(cols: Iterable[str]) -> List[str]:
         c = _COMBINING.sub("", c)
         out.append(c.upper().strip())
     return out
+
 
 def find_column(df: pd.DataFrame, candidates: Iterable[str]) -> Optional[str]:
     """
@@ -107,6 +110,7 @@ def find_column(df: pd.DataFrame, candidates: Iterable[str]) -> Optional[str]:
             # devolve o nome original
             return list(df.columns)[norm_map[n]]
     return None
+
 
 def build_failures_df(all_tests: List["TestResult"]) -> pd.DataFrame:
     """
@@ -125,15 +129,19 @@ def build_failures_df(all_tests: List["TestResult"]) -> pd.DataFrame:
     fails = pd.concat(frames, ignore_index=True).drop_duplicates()
     return fails
 
+
 def _count_by(df: pd.DataFrame, by_cols: List[str]) -> pd.DataFrame:
     """Agrupa e conta, retornando DataFrame com colunas by_cols + ['Ocorrencias']."""
     if any(col not in df.columns for col in by_cols):
         return pd.DataFrame()
-    g = df.groupby(by_cols, dropna=False).size().reset_index(name="Ocorrencias")
+    g = df.groupby(by_cols, dropna=False).size(
+    ).reset_index(name="Ocorrencias")
     g = g.sort_values("Ocorrencias", ascending=False)
     return g
 
 # ==== Fallback de Treemap em Altair (quando Plotly não estiver disponível) ====
+
+
 def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str):
     """
     Gera treemap em Altair usando transform_treemap (Vega-Lite 5).
@@ -157,9 +165,12 @@ def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str):
             y="y:Q", y2="y2:Q",
             color=alt.Color("size:Q", title="Ocorrências"),
             tooltip=[
-                alt.Tooltip(f"{list(safe_map.values())[0]}:N", title=group_cols[0]),
-                alt.Tooltip(f"{list(safe_map.values())[1]}:N", title=group_cols[1]),
-                alt.Tooltip(f"{list(safe_map.values())[2]}:N", title=group_cols[2]),
+                alt.Tooltip(
+                    f"{list(safe_map.values())[0]}:N", title=group_cols[0]),
+                alt.Tooltip(
+                    f"{list(safe_map.values())[1]}:N", title=group_cols[1]),
+                alt.Tooltip(
+                    f"{list(safe_map.values())[2]}:N", title=group_cols[2]),
                 alt.Tooltip("size:Q", title="Ocorrências"),
             ],
         )
@@ -173,6 +184,8 @@ def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str):
 # =========================
 # Modelo de teste
 # =========================
+
+
 @dataclass
 class TestResult:
     name: str
@@ -573,22 +586,29 @@ if uploaded_file:
         fails_df = build_failures_df(all_tests)
 
         if fails_df.empty:
-            st.info("Nenhum item reprovado nos testes até o momento — gráficos não exibidos.")
+            st.info(
+                "Nenhum item reprovado nos testes até o momento — gráficos não exibidos.")
         else:
             # Descobre colunas de Diretoria Executiva e Diretoria com tolerância a variações
-            dir_exec_col = find_column(fails_df, ["Diretoria Executiva", "DIR EXECUTIVA", "DIRETORIA_EXECUTIVA", "DIR_EXECUTIVA"])
-            dir_col      = find_column(fails_df, ["Diretoria", "DIRETORIA", "DIR", "DIR SETORIAL"])
+            dir_exec_col = find_column(fails_df, [
+                                       "Diretoria Executiva", "DIR EXECUTIVA", "DIRETORIA_EXECUTIVA", "DIR_EXECUTIVA"])
+            dir_col = find_column(
+                fails_df, ["Diretoria", "DIRETORIA", "DIR", "DIR SETORIAL"])
 
             # Avisos amigáveis se não achar colunas
             if not dir_exec_col:
-                st.warning("Coluna de **Diretoria Executiva** não encontrada. Tentativas: 'Diretoria Executiva', 'DIR EXECUTIVA', etc. Gráficos que dependem dela serão ocultados.")
+                st.warning(
+                    "Coluna de **Diretoria Executiva** não encontrada. Tentativas: 'Diretoria Executiva', 'DIR EXECUTIVA', etc. Gráficos que dependem dela serão ocultados.")
             if not dir_col:
-                st.warning("Coluna de **Diretoria** não encontrada. Tentativas: 'Diretoria', 'DIR', etc. Gráficos que dependem dela serão ocultados.")
+                st.warning(
+                    "Coluna de **Diretoria** não encontrada. Tentativas: 'Diretoria', 'DIR', etc. Gráficos que dependem dela serão ocultados.")
 
             # Opções gerais
             with st.expander("⚙️ Opções de visualização", expanded=False):
-                top_n = st.slider("Mostrar Top N (aplicável aos gráficos de barras)", min_value=5, max_value=50, value=15, step=5)
-                show_labels = st.checkbox("Mostrar rótulos de valor nas barras", value=True)
+                top_n = st.slider("Mostrar Top N (aplicável aos gráficos de barras)",
+                                  min_value=5, max_value=50, value=15, step=5)
+                show_labels = st.checkbox(
+                    "Mostrar rótulos de valor nas barras", value=True)
 
             # ---- Layout em abas
             tabs = st.tabs([
@@ -604,14 +624,17 @@ if uploaded_file:
                     if data_exec.empty:
                         st.info("Sem dados para Diretoria Executiva.")
                     else:
-                        data_exec_top = data_exec.nlargest(top_n, "Ocorrencias").sort_values("Ocorrencias", ascending=True)
+                        data_exec_top = data_exec.nlargest(
+                            top_n, "Ocorrencias").sort_values("Ocorrencias", ascending=True)
                         # Altair: barras horizontais
                         chart = (
                             alt.Chart(data_exec_top)
                             .mark_bar(cornerRadius=6)
                             .encode(
-                                x=alt.X("Ocorrencias:Q", title="Quantidade de itens reprovados"),
-                                y=alt.Y(f"{dir_exec_col}:N", sort="-x", title="Diretoria Executiva"),
+                                x=alt.X("Ocorrencias:Q",
+                                        title="Quantidade de itens reprovados"),
+                                y=alt.Y(f"{dir_exec_col}:N", sort="-x",
+                                        title="Diretoria Executiva"),
                                 tooltip=[alt.Tooltip(f"{dir_exec_col}:N", title="Diretoria Executiva"),
                                          alt.Tooltip("Ocorrencias:Q", title="Ocorrências")]
                             )
@@ -637,7 +660,8 @@ if uploaded_file:
             with tabs[1]:
                 if dir_exec_col and dir_col:
                     # Constrói contagem em 3 níveis
-                    data_tree = _count_by(fails_df, [dir_exec_col, dir_col, "_Teste"])
+                    data_tree = _count_by(
+                        fails_df, [dir_exec_col, dir_col, "_Teste"])
                     if data_tree.empty:
                         st.info("Sem dados suficientes para o treemap.")
                     else:
@@ -649,46 +673,57 @@ if uploaded_file:
                                 path=[dir_exec_col, dir_col, "_Teste"],
                                 values="Ocorrencias",
                                 color="Ocorrencias",
-                                color_continuous_scale=["#ffe7d0","#ffb978","#ff9e40","#f28c1b","#c96e05"],
+                                color_continuous_scale=[
+                                    "#ffe7d0", "#ffb978", "#ff9e40", "#f28c1b", "#c96e05"],
                             )
                             fig.update_traces(root_color="white")
                             fig.update_layout(margin=dict(t=40, l=0, r=0, b=0))
                             st.plotly_chart(fig, use_container_width=True)
                         except Exception as e:
-                            st.info("Plotly não encontrado; usando treemap em Altair automaticamente. ✅")
-                            ch = treemap_altair(data_tree, [dir_exec_col, dir_col, "_Teste"], "Ocorrencias")
+                            st.info(
+                                "Plotly não encontrado; usando treemap em Altair automaticamente. ✅")
+                            ch = treemap_altair(
+                                data_tree, [dir_exec_col, dir_col, "_Teste"], "Ocorrencias")
                             st.altair_chart(ch, use_container_width=True)
                 else:
-                    st.info("Treemap requer **Diretoria Executiva** e **Diretoria**.")
+                    st.info(
+                        "Treemap requer **Diretoria Executiva** e **Diretoria**.")
 
             # ③ Barras empilhadas por Diretoria (Teste como cor)
             with tabs[2]:
                 # Alternar entre Diretoria Executiva e Diretoria
-                nivel = st.radio("Agrupar por:", options=["Diretoria", "Diretoria Executiva"], horizontal=True, index=0)
+                nivel = st.radio("Agrupar por:", options=[
+                                 "Diretoria", "Diretoria Executiva"], horizontal=True, index=0)
                 col_group = dir_col if nivel == "Diretoria" else dir_exec_col
 
                 if not col_group:
-                    st.info(f"Coluna necessária para '{nivel}' não foi encontrada.")
+                    st.info(
+                        f"Coluna necessária para '{nivel}' não foi encontrada.")
                 else:
                     data_stack = _count_by(fails_df, [col_group, "_Teste"])
                     if data_stack.empty:
                         st.info("Sem dados para o gráfico empilhado.")
                     else:
                         # Limitar Top N categorias de agrupamento
-                        top_groups = data_stack.groupby(col_group)["Ocorrencias"].sum().nlargest(top_n).index
-                        data_stack = data_stack[data_stack[col_group].isin(top_groups)]
+                        top_groups = data_stack.groupby(
+                            col_group)["Ocorrencias"].sum().nlargest(top_n).index
+                        data_stack = data_stack[data_stack[col_group].isin(
+                            top_groups)]
 
                         chart = (
                             alt.Chart(data_stack)
                             .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
                             .encode(
-                                x=alt.X(f"{col_group}:N", title=nivel, sort="-y"),
-                                y=alt.Y("sum(Ocorrencias):Q", title="Ocorrências"),
+                                x=alt.X(f"{col_group}:N",
+                                        title=nivel, sort="-y"),
+                                y=alt.Y("sum(Ocorrencias):Q",
+                                        title="Ocorrências"),
                                 color=alt.Color("_Teste:N", title="Teste"),
                                 tooltip=[
                                     alt.Tooltip(f"{col_group}:N", title=nivel),
                                     alt.Tooltip("_Teste:N", title="Teste"),
-                                    alt.Tooltip("Ocorrencias:Q", title="Ocorrências"),
+                                    alt.Tooltip("Ocorrencias:Q",
+                                                title="Ocorrências"),
                                 ],
                             )
                             .properties(height=420, width="container")
