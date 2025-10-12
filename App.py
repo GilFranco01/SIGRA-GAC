@@ -39,13 +39,6 @@ _COMBINING = re.compile(r"[\u0300-\u036f]")  # diacríticos
 
 
 def normalize_text_fast(s: pd.Series) -> pd.Series:
-    """
-    Normaliza texto de forma vetorizada (rápida):
-    - strip
-    - upper
-    - NFKD
-    - remove diacríticos
-    """
     s = s.astype(str).str.strip().str.upper()
     s = s.str.normalize("NFKD").str.replace(_COMBINING, "", regex=True)
     return s
@@ -65,7 +58,6 @@ def read_excel_safely(file, sheet_name=0, usecols=None):
 
 @st.cache_data(show_spinner=False)
 def read_units(file) -> pd.DataFrame:
-    """Carrega e normaliza nomes de colunas da planilha de unidades."""
     df = read_excel_safely(file, sheet_name=0)
     return df.rename(columns={"Unidade medida int.": "UnidadeMedidaInt", "UnidadeMedidaInt": "UnidadeMedidaInt"})
 
@@ -78,7 +70,6 @@ def img_to_base64(path: str) -> Optional[str]:
 
 
 def autosize_columns(writer: pd.ExcelWriter, sheet_name: str):
-    """Autoajusta a largura das colunas (openpyxl)."""
     ws = writer.sheets[sheet_name]
     for col_idx, col in enumerate(ws.columns, 1):
         length = max((len(str(c.value)) if c.value is not None else 0)
@@ -86,9 +77,8 @@ def autosize_columns(writer: pd.ExcelWriter, sheet_name: str):
         ws.column_dimensions[get_column_letter(
             col_idx)].width = min(max(length + 2, 12), 60)
 
-
 # =========================
-# Helpers para gráficos  (BLOCO 1)
+# Helpers p/ gráficos
 # =========================
 
 
@@ -103,10 +93,6 @@ def _normalize_colnames(cols: Iterable[str]) -> List[str]:
 
 
 def find_column(df: pd.DataFrame, candidates: Iterable[str]) -> Optional[str]:
-    """
-    Procura uma coluna no df entre 'candidates' (considerando variações e acentos).
-    Retorna o nome REAL da coluna se achar, senão None.
-    """
     if df is None or df.empty:
         return None
     norm_map = {n: i for i, n in enumerate(_normalize_colnames(df.columns))}
@@ -114,16 +100,11 @@ def find_column(df: pd.DataFrame, candidates: Iterable[str]) -> Optional[str]:
         n = unicodedata.normalize("NFKD", cand)
         n = _COMBINING.sub("", n).upper().strip()
         if n in norm_map:
-            # devolve o nome original
             return list(df.columns)[norm_map[n]]
     return None
 
 
 def build_failures_df(all_tests: List["TestResult"]) -> pd.DataFrame:
-    """
-    Concatena todos os itens reprovados, preservando colunas originais e adicionando
-    a coluna '_Teste' com o nome do teste.
-    """
     frames = []
     for t in all_tests:
         if isinstance(t.df, pd.DataFrame) and not t.df.empty:
@@ -132,60 +113,44 @@ def build_failures_df(all_tests: List["TestResult"]) -> pd.DataFrame:
             frames.append(tmp)
     if not frames:
         return pd.DataFrame()
-    # drop_duplicates para evitar contagem dobrada do mesmo registro
-    fails = pd.concat(frames, ignore_index=True).drop_duplicates()
-    return fails
+    return pd.concat(frames, ignore_index=True).drop_duplicates()
 
 
 def _count_by(df: pd.DataFrame, by_cols: List[str]) -> pd.DataFrame:
-    """Agrupa e conta, retornando DataFrame com colunas by_cols + ['Ocorrencias']."""
     if any(col not in df.columns for col in by_cols):
         return pd.DataFrame()
     g = df.groupby(by_cols, dropna=False).size(
     ).reset_index(name="Ocorrencias")
-    g = g.sort_values("Ocorrencias", ascending=False)
-    return g
+    return g.sort_values("Ocorrencias", ascending=False)
 
-# ==== Treemap em Altair com cores por Diretoria Executiva ====
+# ==== Treemap Altair (cores por Diretoria Executiva) ====
 
 
-def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str, palette: List[str], legend_title: str):
-    """
-    Gera treemap em Altair usando transform_treemap (Vega-Lite 5).
-    Cores categóricas aplicadas ao 1º nível (Diretoria Executiva).
-    """
-    # agrega (garante unicidade antes do transform)
+def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str,
+                   palette: List[str], legend_title: str):
     agg = data.groupby(group_cols, dropna=False)[size_col].sum().reset_index()
-
-    # Criamos aliases seguros
     safe_map = {c: f"col_{i}" for i, c in enumerate(group_cols)}
     df_safe = agg.rename(columns=safe_map).rename(columns={size_col: "size"})
 
-    col0 = list(safe_map.values())[0]
-    col1 = list(safe_map.values())[1]
-    col2 = list(safe_map.values())[2]
+    col0, col1, col2 = [safe_map[c] for c in group_cols]
 
     ch = (
         alt.Chart(df_safe)
         .transform_treemap(size="size", groupby=[col0, col1, col2], method="squarify")
         .mark_rect()
         .encode(
-            x="x:Q", x2="x2:Q",
-            y="y:Q", y2="y2:Q",
+            x="x:Q", x2="x2:Q", y="y:Q", y2="y2:Q",
             color=alt.Color(f"{col0}:N", title=legend_title,
                             scale=alt.Scale(range=palette)),
+            # Tooltip minimalista: Diretoria Executiva + Ocorrências
             tooltip=[
                 alt.Tooltip(f"{col0}:N", title=group_cols[0]),
-                alt.Tooltip(f"{col1}:N", title=group_cols[1]),
-                alt.Tooltip(f"{col2}:N", title=group_cols[2]),
                 alt.Tooltip("size:Q", title="Ocorrências"),
             ],
         )
         .properties(height=520, width="container")
+        .configure_axis(grid=False, labels=False, ticks=False, domain=False)
     )
-
-    # Eixos ocultos
-    ch = ch.configure_axis(grid=False, labels=False, ticks=False, domain=False)
     return ch
 
 # =========================
@@ -202,15 +167,11 @@ class TestResult:
 
 
 def run_core_tests(df: pd.DataFrame) -> List[TestResult]:
-    """Executa os testes que não dependem da tabela de unidades."""
     results: List[TestResult] = []
-
-    # 1) Quantidade Zerada
     qtd_zerada = df[df["Quantidade"] == 0]
     results.append(TestResult("Quantidade Zerada", qtd_zerada,
                    "🔴", "Itens com quantidade igual a zero."))
 
-    # 2) Inventário Duplicado ou Zerado
     inv_dup = df[df["Nro Inventario"].notna() & df.duplicated(
         "Nro Inventario", keep=False)]
     inv_zero = df[df["Nro Inventario"].isna() | (df["Nro Inventario"] == 0)]
@@ -219,7 +180,6 @@ def run_core_tests(df: pd.DataFrame) -> List[TestResult]:
     results.append(TestResult("Inventário Duplicado ou Zerado",
                    inventario_problema, "🟠", "Duplicados e/ou valor zerado/ausente."))
 
-    # 3) Natureza do PEP × Denominação
     denom_ligacoes_ok = CONST["denom_ligacoes_ok"]
     cond_ligacao = (df["Natureza_PEP"] == "12") & (
         ~df["_Denom_std"].isin(denom_ligacoes_ok))
@@ -229,13 +189,11 @@ def run_core_tests(df: pd.DataFrame) -> List[TestResult]:
     results.append(TestResult("Natureza do PEP × Denominação", natureza_incorreta,
                    "🟡", "Denominação incompatível com a natureza do PEP."))
 
-    # 4) Valor Unitizado < 100
     valor_menor_100 = df[pd.to_numeric(
         df["Valor Unitizado"], errors="coerce") < 100]
     results.append(TestResult("Valor Unitizado < R$ 100",
                    valor_menor_100, "🟢", "Valores unitizados abaixo de R$ 100."))
 
-    # 5) Imobilizado com > 1 PEP
     pep_por_imobilizado = df.groupby("Imobilizado")["PEP"].agg(
         lambda s: s.dropna().nunique())
     imobilizado_varios_pep = pep_por_imobilizado[pep_por_imobilizado > 1].index
@@ -243,20 +201,14 @@ def run_core_tests(df: pd.DataFrame) -> List[TestResult]:
         imobilizado_varios_pep)]
     results.append(TestResult("Imobilizado com > 1 PEP", imobilizado_multiplos_pep,
                    "🔵", "Um mesmo imobilizado com mais de um PEP."))
-
     return results
 
 
 def run_units_test(df: pd.DataFrame, units_df: Optional[pd.DataFrame]) -> TestResult:
-    """Executa o teste que depende da tabela de unidades (quando fornecida)."""
     if units_df is None or "UAR" not in units_df.columns or "UnidadeMedidaInt" not in units_df.columns:
         return TestResult("UN Medida Incorreta", pd.DataFrame(), "🧪", "Comparação da unidade de medida com a tabela de referência.")
     df_merge = pd.merge(
-        df,
-        units_df[["UAR", "UnidadeMedidaInt"]],
-        on="UAR",
-        how="left",
-        validate="many_to_one",
+        df, units_df[["UAR", "UnidadeMedidaInt"]], on="UAR", how="left", validate="many_to_one",
     )
     ref = df_merge["UnidadeMedidaInt"]
     left = normalize_text_fast(df_merge["UnidMedida"].astype(str))
@@ -267,195 +219,45 @@ def run_units_test(df: pd.DataFrame, units_df: Optional[pd.DataFrame]) -> TestRe
 
 
 # =========================
-# CSS (forte em acessibilidade e estilos estáveis)
+# CSS (mantido)
 # =========================
-bg_b64 = img_to_base64("paleta.png")  # fundo opcional
+bg_b64 = img_to_base64("paleta.png")
 
 st.markdown(
     f"""
     <style>
     :root {{
-      --laranja-base: #ff9e40;
-      --laranja-borda: #ffc46b;
-      --laranja-hover: #f28c1b;
-
-      --verde-claro: #d1fae5;
-      --verde-borda: #86efac;
-      --verde-texto: #064e3b;
-
-      --verde-btn: #22c55e;
-      --verde-btn-hover: #16a34a;
-
-      --vermelho-claro: #fee2e2;
-      --vermelho-borda: #fca5a5;
-      --vermelho-texto: #7f1d1d;
-
-      --preto: #111827;
-      --cinza-escuro: #374151;
-      --branco: #ffffff;
-      --sombra: 0 10px 28px rgba(2, 8, 23, .18);
-      --radius: 14px;
+      --laranja-base: #ff9e40; --laranja-borda: #ffc46b; --laranja-hover: #f28c1b;
+      --verde-claro: #d1fae5; --verde-borda: #86efac; --verde-texto: #064e3b;
+      --verde-btn: #22c55e; --verde-btn-hover: #16a34a;
+      --vermelho-claro: #fee2e2; --vermelho-borda: #fca5a5; --vermelho-texto: #7f1d1d;
+      --preto: #111827; --cinza-escuro: #374151; --branco: #ffffff;
+      --sombra: 0 10px 28px rgba(2, 8, 23, .18); --radius: 14px;
     }}
-
     .stApp {{
         {"background: url('data:image/png;base64," + bg_b64 + "') no-repeat center top fixed; background-size: cover;" if bg_b64 else ""}
     }}
     .block-container {{ padding-top: 0.8rem; }}
-
-    /* ===== Cabeçalho ===== */
-    .header-wrap {{
-        margin: 160px auto 28px auto;
-        text-align: center;
-        max-width: 1200px;
-        padding: 8px 12px;
-    }}
-    .header-title {{
-        font-weight: 900;
-        font-size: clamp(28px,4.2vw,48px);
-        margin: 0;
-        color: #374151 !important;
-        text-shadow: none !important;
-    }}
-    .header-sub {{
-        margin-top: 6px;
-        font-weight: 800;
-        color: #475569;
-        opacity: .95;
-        font-size: clamp(16px,2vw,24px);
-    }}
-
-    /* ===== Uploaders ===== */
-    section[data-testid="stFileUploaderDropzone"] {{
-        border-radius: var(--radius) !important;
-        border: 2px solid var(--laranja-borda) !important;
-        background: var(--laranja-base) !important;
-        color: var(--preto) !important;
-        box-shadow: var(--sombra) !important;
-    }}
-    section[data-testid="stFileUploaderDropzone"] * {{ color: var(--preto) !important; }}
-
-    /* Rótulos dos uploaders em cinza-escuro */
-    div[data-testid="stFileUploader"] > label,
-    div[data-testid="stFileUploader"] > label * {{
-        color: var(--cinza-escuro) !important;
-        font-weight: 700 !important;
-    }}
-
-    /* Botão "Browse files" */
-    div[data-testid="stFileUploader"] button {{
-        background: var(--branco) !important;
-        color: var(--preto) !important;
-        border: none !important;
-        border-radius: 10px !important;
-        box-shadow: 0 6px 18px rgba(0,0,0,.22) !important;
-        font-weight: 700 !important;
-    }}
-    div[data-testid="stFileUploader"] button:hover {{
-        background: #f8fafc !important;
-        transform: translateY(-1px);
-    }}
-
-    /* ===== TextInput ===== */
-    .stTextInput>div>div>input {{
-        background: var(--laranja-base) !important;
-        color: var(--preto) !important;
-        border: 2px solid var(--laranja-borda) !important;
-        border-radius: 10px !important;
-        box-shadow: var(--sombra) !important;
-    }}
-    .stTextInput>div>div>input::placeholder {{ color: #111827 !important; opacity: .85; }}
-    div[data-testid="stTextInput"] > label,
-    div[data-testid="stTextInput"] > label * {{ color: var(--cinza-escuro) !important; font-weight: 700 !important; }}
-
-    /* ===== Alertas padrão (mantém laranja) ===== */
-    .stAlert {{
-        background: var(--laranja-base) !important;
-        border: 2px solid var(--laranja-borda) !important;
-        color: var(--preto) !important;
-        border-radius: 12px !important;
-        box-shadow: var(--sombra) !important;
-    }}
-    .stAlert p, .stAlert div {{ color: var(--preto) !important; }}
-
-    /* ===== Métricas ===== */
-    div[data-testid="stMetric"] {{
-        background: var(--laranja-base) !important;
-        border: 2px solid var(--laranja-borda) !important;
-        border-radius: var(--radius) !important;
-        padding: 14px !important;
-        box-shadow: var(--sombra) !important;
-        color: var(--preto) !important;
-    }}
-    div[data-testid="stMetric"] > label p {{ color: #0f172a !important; font-weight: 800 !important; }}
-    div[data-testid="stMetric"] > div {{ color: var(--preto) !important; text-shadow: none !important; }}
-
-    /* ===== Expanders ===== */
-    details[data-testid="stExpander"] {{
-        border-radius: var(--radius) !important;
-        overflow: hidden;
-        border: 0 !important;
-        box-shadow: var(--sombra) !important;
-    }}
-    details[data-testid="stExpander"] > summary {{
-        background: var(--laranja-base) !important;
-        border-bottom: 2px solid var(--laranja-borda) !important;
-        color: var(--preto) !important;
-        padding: 10px 12px !important;
-    }}
-    summary p {{ color: var(--preto) !important; font-weight: 900 !important; }}
-    details[data-testid="stExpander"] > div {{
-        background: #ffffff !important;
-        color: var(--preto) !important;
-        border: 2px solid var(--laranja-borda) !important;
-        border-top: 0 !important;
-    }}
-
-    /* ===== Botões ===== */
-    .stButton>button {{
-        background: var(--laranja-hover) !important;
-        color: var(--branco) !important;
-        border: none !important;
-        border-radius: 12px !important;
-        box-shadow: 0 8px 22px rgba(0,0,0,.28) !important;
-        font-weight: 800 !important;
-    }}
-    .stButton>button:hover {{ filter: brightness(1.03); transform: translateY(-1px); }}
-
-    /* Botão de download VERDE */
-    .stDownloadButton button {{
-        background: var(--verde-btn) !important;
-        color: var(--branco) !important;
-        border: none !important;
-        border-radius: 12px !important;
-        box-shadow: 0 8px 22px rgba(0,0,0,.28) !important;
-        font-weight: 800 !important;
-    }}
-    .stDownloadButton button:hover {{
-        background: var(--verde-btn-hover) !important;
-        transform: translateY(-1px);
-    }}
-
-    /* ===== Caixas custom (aviso) ===== */
-    .info-green {{
-        background: var(--verde-claro);
-        border: 2px solid var(--verde-borda);
-        color: var(--verde-texto);
-        border-radius: 12px;
-        padding: 14px 16px;
-        box-shadow: var(--sombra);
-        font-weight: 600;
-        margin-bottom: 28px;
-    }}
-    .info-red {{
-        background: var(--vermelho-claro);
-        border: 2px solid var(--vermelho-borda);
-        color: var(--vermelho-texto);
-        border-radius: 12px;
-        padding: 14px 16px;
-        box-shadow: var(--sombra);
-        font-weight: 700;
-        margin-bottom: 28px;
-    }}
+    .header-wrap {{ margin: 160px auto 28px; text-align:center; max-width:1200px; padding:8px 12px; }}
+    .header-title {{ font-weight: 900; font-size: clamp(28px,4.2vw,48px); margin:0; color:#374151!important; }}
+    .header-sub {{ margin-top:6px; font-weight:800; color:#475569; opacity:.95; font-size:clamp(16px,2vw,24px); }}
+    section[data-testid="stFileUploaderDropzone"] {{ border-radius:var(--radius)!important; border:2px solid var(--laranja-borda)!important; background:var(--laranja-base)!important; color:var(--preto)!important; box-shadow:var(--sombra)!important; }}
+    section[data-testid="stFileUploaderDropzone"] * {{ color:var(--preto)!important; }}
+    div[data-testid="stFileUploader"] > label, div[data-testid="stFileUploader"] > label * {{ color:#374151!important; font-weight:700!important; }}
+    div[data-testid="stFileUploader"] button {{ background:#fff!important; color:#111827!important; border:none!important; border-radius:10px!important; box-shadow:0 6px 18px rgba(0,0,0,.22)!important; font-weight:700!important; }}
+    div[data-testid="stFileUploader"] button:hover {{ background:#f8fafc!important; transform:translateY(-1px); }}
+    .stTextInput>div>div>input {{ background:var(--laranja-base)!important; color:var(--preto)!important; border:2px solid var(--laranja-borda)!important; border-radius:10px!important; box-shadow:var(--sombra)!important; }}
+    .stTextInput>div>div>input::placeholder {{ color:#111827!important; opacity:.85; }}
+    .stAlert {{ background:var(--laranja-base)!important; border:2px solid var(--laranja-borda)!important; color:var(--preto)!important; border-radius:12px!important; box-shadow:var(--sombra)!important; }}
+    div[data-testid="stMetric"] {{ background:var(--laranja-base)!important; border:2px solid var(--laranja-borda)!important; border-radius:var(--radius)!important; padding:14px!important; box-shadow:var(--sombra)!important; color:var(--preto)!important; }}
+    details[data-testid="stExpander"] {{ border-radius:var(--radius)!important; overflow:hidden; border:0!important; box-shadow:var(--sombra)!important; }}
+    details[data-testid="stExpander"] > summary {{ background:var(--laranja-base)!important; border-bottom:2px solid var(--laranja-borda)!important; color:var(--preto)!important; padding:10px 12px!important; }}
+    .stButton>button {{ background:var(--laranja-hover)!important; color:#fff!important; border:none!important; border-radius:12px!important; box-shadow:0 8px 22px rgba(0,0,0,.28)!important; font-weight:800!important; }}
+    .stButton>button:hover {{ filter:brightness(1.03); transform:translateY(-1px); }}
+    .stDownloadButton button {{ background:#22c55e!important; color:#fff!important; border:none!important; border-radius:12px!important; box-shadow:0 8px 22px rgba(0,0,0,.28)!important; font-weight:800!important; }}
+    .stDownloadButton button:hover {{ background:#16a34a!important; transform:translateY(-1px); }}
+    .info-green {{ background:#d1fae5; border:2px solid #86efac; color:#064e3b; border-radius:12px; padding:14px 16px; box-shadow:var(--sombra); font-weight:600; margin-bottom:28px; }}
+    .info-red {{ background:#fee2e2; border:2px solid #fca5a5; color:#7f1d1d; border-radius:12px; padding:14px 16px; box-shadow:var(--sombra); font-weight:700; margin-bottom:28px; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -481,7 +283,6 @@ col_up1, col_up2 = st.columns([2, 2], gap="large")
 with col_up1:
     uploaded_file = st.file_uploader(
         "📤 Importe o arquivo Excel principal", type=["xlsx"], key="main")
-
     selected_sheet = CONST["default_sheet"]
     if uploaded_file:
         try:
@@ -509,25 +310,20 @@ if uploaded_file:
         df = read_excel_safely(uploaded_file, sheet_name=selected_sheet)
         st.success("Arquivo principal carregado com sucesso!")
 
-        # Validação de colunas
-        required = [
-            "Quantidade", "Nro Inventario", "PEP", "Denominacao",
-            "Valor Unitizado", "Imobilizado", "UAR", "UnidMedida",
-        ]
+        required = ["Quantidade", "Nro Inventario", "PEP", "Denominacao",
+                    "Valor Unitizado", "Imobilizado", "UAR", "UnidMedida"]
         missing = [c for c in required if c not in df.columns]
         if missing:
             tips = "\n".join(f"• Esperado: {c}" for c in sorted(missing))
             st.error(f"Colunas faltando no arquivo principal:\n{tips}")
             st.stop()
 
-        # Pré-processamento
         df = df.copy()
         df["_Denom_std"] = normalize_text_fast(df["Denominacao"])
         pep_str = df["PEP"].astype(str)
         df["Natureza_PEP"] = pep_str.where(
             pep_str.str.len() >= 15, None).str[13:15]
 
-        # Tabela de unidades (mensagens amigáveis)
         units_df = None
         if units_file is not None:
             try:
@@ -538,39 +334,25 @@ if uploaded_file:
                     units_df = None
                 else:
                     st.markdown(
-                        """
-                        <div class="info-green">
-                            Tabela de Unidades enviada. O teste de unidade de medida está habilitado. ✅
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                        """<div class="info-green">Tabela de Unidades enviada. O teste de unidade de medida está habilitado. ✅</div>""", unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Erro ao carregar a tabela de unidades: {e}")
         else:
             st.markdown(
-                """
-                <div class="info-red">
-                    Teste de unidade de medida <strong>não realizado</strong> porque a tabela de unidades não foi enviada.
-                    Envie o arquivo para habilitar essa verificação.
-                </div>
-                """,
+                """<div class="info-red">Teste de unidade de medida <strong>não realizado</strong> porque a tabela de unidades não foi enviada.</div>""",
                 unsafe_allow_html=True,
             )
 
-        # Execução dos testes com status
         with st.status("Executando verificações...", expanded=False) as status:
             core_tests = run_core_tests(df)
             units_test = run_units_test(df, units_df)
             all_tests = core_tests + [units_test]
             status.update(label="Verificações concluídas ✅", state="complete")
 
-        # Métricas-resumo (mostra as 6 primeiras)
         metric_cols = st.columns(6)
         for i, t in enumerate(all_tests[:6]):
             metric_cols[i].metric(t.name, len(t.df))
 
-        # Resultados
         st.subheader("📊 Resultados dos Testes")
         for t in all_tests:
             with st.expander(f"{t.emoji} {t.name}", expanded=False):
@@ -581,17 +363,15 @@ if uploaded_file:
                                  hide_index=True)
 
         # =========================
-        # Gráficos: Itens reprovados  (BLOCO 2)
+        # Gráficos: Itens reprovados
         # =========================
         st.subheader("📈 Gráficos — Itens Reprovados")
-
         fails_df = build_failures_df(all_tests)
 
         if fails_df.empty:
             st.info(
                 "Nenhum item reprovado nos testes até o momento — gráficos não exibidos.")
         else:
-            # Descobre colunas de Diretoria Executiva e Diretoria
             dir_exec_col = find_column(fails_df, [
                                        "Diretoria Executiva", "DIR EXECUTIVA", "DIRETORIA_EXECUTIVA", "DIR_EXECUTIVA"])
             dir_col = find_column(
@@ -599,26 +379,24 @@ if uploaded_file:
 
             if not dir_exec_col:
                 st.warning(
-                    "Coluna de **Diretoria Executiva** não encontrada. Tentativas: 'Diretoria Executiva', 'DIR EXECUTIVA', etc. Gráficos que dependem dela serão ocultados.")
+                    "Coluna de **Diretoria Executiva** não encontrada. Gráficos que dependem dela serão ocultados.")
             if not dir_col:
                 st.warning(
-                    "Coluna de **Diretoria** não encontrada. Tentativas: 'Diretoria', 'DIR', etc. Gráficos que dependem dela serão ocultados.")
+                    "Coluna de **Diretoria** não encontrada. Gráficos que dependem dela serão ocultados.")
 
-            # Opções gerais
             with st.expander("⚙️ Opções de visualização", expanded=False):
                 top_n = st.slider("Mostrar Top N (aplicável aos gráficos de barras)",
                                   min_value=5, max_value=50, value=15, step=5)
                 show_labels = st.checkbox(
                     "Mostrar rótulos de valor nas barras", value=True)
 
-            # ---- Layout em abas
             tabs = st.tabs([
                 "① Barras por Diretoria Executiva",
                 "② Treemap: Executiva → Diretoria → Teste (cores por Executiva)",
                 "③ Barras empilhadas por Diretoria",
             ])
 
-            # ① Barras horizontais por Diretoria Executiva (Top N)
+            # ① Barras
             with tabs[0]:
                 if dir_exec_col:
                     data_exec = _count_by(fails_df, [dir_exec_col])
@@ -644,19 +422,14 @@ if uploaded_file:
                             labels = (
                                 alt.Chart(data_exec_top)
                                 .mark_text(align="left", dx=6)
-                                .encode(
-                                    x="Ocorrencias:Q",
-                                    y=f"{dir_exec_col}:N",
-                                    text="Ocorrencias:Q",
-                                )
+                                .encode(x="Ocorrencias:Q", y=f"{dir_exec_col}:N", text="Ocorrencias:Q")
                             )
                             chart = chart + labels
-
                         st.altair_chart(chart, use_container_width=True)
                 else:
                     st.info("Gráfico requer coluna de **Diretoria Executiva**.")
 
-            # ② Treemap: Diretoria Executiva → Diretoria → Teste (cores por Executiva)
+            # ② Treemap (cores por Executiva + tooltip minimalista)
             with tabs[1]:
                 if dir_exec_col and dir_col:
                     data_tree = _count_by(
@@ -664,25 +437,45 @@ if uploaded_file:
                     if data_tree.empty:
                         st.info("Sem dados suficientes para o treemap.")
                     else:
-                        # Mapa de cores categóricas por Diretoria Executiva
                         unique_exec = list(
                             pd.Series(data_tree[dir_exec_col].astype(str).unique()).sort_values())
-                        color_map = {k: EXEC_PALETTE[i % len(EXEC_PALETTE)]
-                                     for i, k in enumerate(unique_exec)}
+                        color_map = {k: EXEC_PALETTE[i % len(
+                            EXEC_PALETTE)] for i, k in enumerate(unique_exec)}
                         try:
                             import plotly.express as px
                             fig = px.treemap(
                                 data_tree,
                                 path=[dir_exec_col, dir_col, "_Teste"],
                                 values="Ocorrencias",
-                                color=dir_exec_col,  # <- cores por Diretoria Executiva
+                                color=dir_exec_col,              # cores por Diretoria Executiva
                                 color_discrete_map=color_map,
                             )
                             fig.update_traces(root_color="white")
-                            fig.update_layout(
-                                margin=dict(t=40, l=0, r=0, b=0),
-                                legend_title_text="Diretoria Executiva"
+                            fig.update_layout(margin=dict(
+                                t=40, l=0, r=0, b=0), legend_title_text="Diretoria Executiva")
+
+                            # ---- Tooltip minimalista no Plotly ----
+                            # calcula ancestral (Diretoria Executiva) para cada nó e injeta em customdata
+                            tr = fig.data[0]
+                            ids = list(tr.ids)
+                            parents = list(tr.parents)
+                            parent_map = {ids[i]: parents[i]
+                                          for i in range(len(ids))}
+
+                            def top_ancestor(node: str) -> str:
+                                # sobe até o nível raiz
+                                while node in parent_map and parent_map[node]:
+                                    node = parent_map[node]
+                                return node  # rótulo do nível Diretoria Executiva
+
+                            custom_exec = [top_ancestor(i) for i in ids]
+                            fig.data[0].customdata = custom_exec
+                            fig.data[0].hovertemplate = (
+                                # Diretoria Executiva
+                                "<b>%{customdata}</b><br>"
+                                "Ocorrências=%{value}<extra></extra>"
                             )
+
                             st.plotly_chart(fig, use_container_width=True)
                         except Exception:
                             st.info(
@@ -699,7 +492,7 @@ if uploaded_file:
                     st.info(
                         "Treemap requer **Diretoria Executiva** e **Diretoria**.")
 
-            # ③ Barras empilhadas por Diretoria (Teste como cor)
+            # ③ Barras empilhadas
             with tabs[2]:
                 nivel = st.radio("Agrupar por:", options=[
                                  "Diretoria", "Diretoria Executiva"], horizontal=True, index=0)
@@ -717,7 +510,6 @@ if uploaded_file:
                             col_group)["Ocorrencias"].sum().nlargest(top_n).index
                         data_stack = data_stack[data_stack[col_group].isin(
                             top_groups)]
-
                         chart = (
                             alt.Chart(data_stack)
                             .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
@@ -739,7 +531,7 @@ if uploaded_file:
                         st.altair_chart(chart, use_container_width=True)
 
         # =========================
-        # Relatório Excel (autoajuste de colunas)
+        # Relatório Excel
         # =========================
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -762,10 +554,6 @@ if uploaded_file:
         st.error(f"Erro ao processar o arquivo: {e}")
 else:
     st.markdown(
-        """
-        <div class="info-green">
-            Envie o arquivo principal (.xlsx) para iniciar a validação.
-        </div>
-        """,
+        """<div class="info-green">Envie o arquivo principal (.xlsx) para iniciar a validação.</div>""",
         unsafe_allow_html=True,
     )
