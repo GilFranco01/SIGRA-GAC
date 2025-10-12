@@ -25,6 +25,13 @@ CONST = {
     "denom_ligacoes_ok": {"LIGACAO DE ESGOTO", "LIGACAO DE AGUA"},
 }
 
+# Paleta categórica (alta distinção) para Diretoria Executiva
+EXEC_PALETTE = [
+    "#3b82f6", "#ef4444", "#22c55e", "#eab308", "#a855f7", "#06b6d4",
+    "#f97316", "#14b8a6", "#f43f5e", "#84cc16", "#8b5cf6", "#0ea5e9",
+    "#e11d48", "#0d9488", "#f59e0b", "#2563eb", "#9333ea", "#10b981",
+]
+
 # =========================
 # Utilitários
 # =========================
@@ -139,45 +146,45 @@ def _count_by(df: pd.DataFrame, by_cols: List[str]) -> pd.DataFrame:
     g = g.sort_values("Ocorrencias", ascending=False)
     return g
 
-# ==== Fallback de Treemap em Altair (quando Plotly não estiver disponível) ====
+# ==== Treemap em Altair com cores por Diretoria Executiva ====
 
 
-def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str):
+def treemap_altair(data: pd.DataFrame, group_cols: List[str], size_col: str, palette: List[str], legend_title: str):
     """
     Gera treemap em Altair usando transform_treemap (Vega-Lite 5).
-    - data: DataFrame já agregado com a coluna 'size_col' (ex.: 'Ocorrencias').
-    - group_cols: hierarquia (ex.: [dir_exec_col, dir_col, '_Teste']).
+    Cores categóricas aplicadas ao 1º nível (Diretoria Executiva).
     """
     # agrega (garante unicidade antes do transform)
     agg = data.groupby(group_cols, dropna=False)[size_col].sum().reset_index()
 
-    # Vega-Lite espera nomes sem espaços para os 'groupby' em algumas versões;
-    # criamos aliases seguros
+    # Criamos aliases seguros
     safe_map = {c: f"col_{i}" for i, c in enumerate(group_cols)}
     df_safe = agg.rename(columns=safe_map).rename(columns={size_col: "size"})
 
+    col0 = list(safe_map.values())[0]
+    col1 = list(safe_map.values())[1]
+    col2 = list(safe_map.values())[2]
+
     ch = (
         alt.Chart(df_safe)
-        .transform_treemap(size="size", groupby=list(safe_map.values()), method="squarify")
+        .transform_treemap(size="size", groupby=[col0, col1, col2], method="squarify")
         .mark_rect()
         .encode(
             x="x:Q", x2="x2:Q",
             y="y:Q", y2="y2:Q",
-            color=alt.Color("size:Q", title="Ocorrências"),
+            color=alt.Color(f"{col0}:N", title=legend_title,
+                            scale=alt.Scale(range=palette)),
             tooltip=[
-                alt.Tooltip(
-                    f"{list(safe_map.values())[0]}:N", title=group_cols[0]),
-                alt.Tooltip(
-                    f"{list(safe_map.values())[1]}:N", title=group_cols[1]),
-                alt.Tooltip(
-                    f"{list(safe_map.values())[2]}:N", title=group_cols[2]),
+                alt.Tooltip(f"{col0}:N", title=group_cols[0]),
+                alt.Tooltip(f"{col1}:N", title=group_cols[1]),
+                alt.Tooltip(f"{col2}:N", title=group_cols[2]),
                 alt.Tooltip("size:Q", title="Ocorrências"),
             ],
         )
         .properties(height=520, width="container")
     )
 
-    # Títulos legíveis nos eixos (treemap usa pixel space, então escondemos)
+    # Eixos ocultos
     ch = ch.configure_axis(grid=False, labels=False, ticks=False, domain=False)
     return ch
 
@@ -243,7 +250,6 @@ def run_core_tests(df: pd.DataFrame) -> List[TestResult]:
 def run_units_test(df: pd.DataFrame, units_df: Optional[pd.DataFrame]) -> TestResult:
     """Executa o teste que depende da tabela de unidades (quando fornecida)."""
     if units_df is None or "UAR" not in units_df.columns or "UnidadeMedidaInt" not in units_df.columns:
-        # Retorna vazio para manter a estrutura; mensagem é tratada na UI
         return TestResult("UN Medida Incorreta", pd.DataFrame(), "🧪", "Comparação da unidade de medida com a tabela de referência.")
     df_merge = pd.merge(
         df,
@@ -307,7 +313,7 @@ st.markdown(
         font-weight: 900;
         font-size: clamp(28px,4.2vw,48px);
         margin: 0;
-        color: #374151 !important;  /* cinza-escuro forçado */
+        color: #374151 !important;
         text-shadow: none !important;
     }}
     .header-sub {{
@@ -438,10 +444,8 @@ st.markdown(
         padding: 14px 16px;
         box-shadow: var(--sombra);
         font-weight: 600;
-        margin-bottom: 28px; /* espaço dos cards */
+        margin-bottom: 28px;
     }}
-    .info-green p, .info-green div, .info-green strong {{ color: var(--verde-texto) !important; margin: 0; }}
-
     .info-red {{
         background: var(--vermelho-claro);
         border: 2px solid var(--vermelho-borda);
@@ -450,9 +454,8 @@ st.markdown(
         padding: 14px 16px;
         box-shadow: var(--sombra);
         font-weight: 700;
-        margin-bottom: 28px; /* espaço dos cards */
+        margin-bottom: 28px;
     }}
-    .info-red p, .info-red div, .info-red strong {{ color: var(--vermelho-texto) !important; margin: 0; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -489,7 +492,6 @@ with col_up1:
             selected_sheet = st.selectbox(
                 "Aba do relatório", options=options, index=default_idx)
         except Exception:
-            # fallback se der algo errado com ExcelFile
             selected_sheet = st.text_input(
                 "Aba do relatório", value=selected_sheet)
     else:
@@ -589,13 +591,12 @@ if uploaded_file:
             st.info(
                 "Nenhum item reprovado nos testes até o momento — gráficos não exibidos.")
         else:
-            # Descobre colunas de Diretoria Executiva e Diretoria com tolerância a variações
+            # Descobre colunas de Diretoria Executiva e Diretoria
             dir_exec_col = find_column(fails_df, [
                                        "Diretoria Executiva", "DIR EXECUTIVA", "DIRETORIA_EXECUTIVA", "DIR_EXECUTIVA"])
             dir_col = find_column(
                 fails_df, ["Diretoria", "DIRETORIA", "DIR", "DIR SETORIAL"])
 
-            # Avisos amigáveis se não achar colunas
             if not dir_exec_col:
                 st.warning(
                     "Coluna de **Diretoria Executiva** não encontrada. Tentativas: 'Diretoria Executiva', 'DIR EXECUTIVA', etc. Gráficos que dependem dela serão ocultados.")
@@ -613,7 +614,7 @@ if uploaded_file:
             # ---- Layout em abas
             tabs = st.tabs([
                 "① Barras por Diretoria Executiva",
-                "② Treemap: Executiva → Diretoria → Teste",
+                "② Treemap: Executiva → Diretoria → Teste (cores por Executiva)",
                 "③ Barras empilhadas por Diretoria",
             ])
 
@@ -626,7 +627,6 @@ if uploaded_file:
                     else:
                         data_exec_top = data_exec.nlargest(
                             top_n, "Ocorrencias").sort_values("Ocorrencias", ascending=True)
-                        # Altair: barras horizontais
                         chart = (
                             alt.Chart(data_exec_top)
                             .mark_bar(cornerRadius=6)
@@ -656,34 +656,44 @@ if uploaded_file:
                 else:
                     st.info("Gráfico requer coluna de **Diretoria Executiva**.")
 
-            # ② Treemap: Diretoria Executiva → Diretoria → Teste
+            # ② Treemap: Diretoria Executiva → Diretoria → Teste (cores por Executiva)
             with tabs[1]:
                 if dir_exec_col and dir_col:
-                    # Constrói contagem em 3 níveis
                     data_tree = _count_by(
                         fails_df, [dir_exec_col, dir_col, "_Teste"])
                     if data_tree.empty:
                         st.info("Sem dados suficientes para o treemap.")
                     else:
-                        # Tenta usar Plotly; se não houver, cai para Altair
+                        # Mapa de cores categóricas por Diretoria Executiva
+                        unique_exec = list(
+                            pd.Series(data_tree[dir_exec_col].astype(str).unique()).sort_values())
+                        color_map = {k: EXEC_PALETTE[i % len(EXEC_PALETTE)]
+                                     for i, k in enumerate(unique_exec)}
                         try:
                             import plotly.express as px
                             fig = px.treemap(
                                 data_tree,
                                 path=[dir_exec_col, dir_col, "_Teste"],
                                 values="Ocorrencias",
-                                color="Ocorrencias",
-                                color_continuous_scale=[
-                                    "#ffe7d0", "#ffb978", "#ff9e40", "#f28c1b", "#c96e05"],
+                                color=dir_exec_col,  # <- cores por Diretoria Executiva
+                                color_discrete_map=color_map,
                             )
                             fig.update_traces(root_color="white")
-                            fig.update_layout(margin=dict(t=40, l=0, r=0, b=0))
+                            fig.update_layout(
+                                margin=dict(t=40, l=0, r=0, b=0),
+                                legend_title_text="Diretoria Executiva"
+                            )
                             st.plotly_chart(fig, use_container_width=True)
-                        except Exception as e:
+                        except Exception:
                             st.info(
                                 "Plotly não encontrado; usando treemap em Altair automaticamente. ✅")
                             ch = treemap_altair(
-                                data_tree, [dir_exec_col, dir_col, "_Teste"], "Ocorrencias")
+                                data_tree,
+                                [dir_exec_col, dir_col, "_Teste"],
+                                "Ocorrencias",
+                                palette=[color_map[k] for k in unique_exec],
+                                legend_title="Diretoria Executiva",
+                            )
                             st.altair_chart(ch, use_container_width=True)
                 else:
                     st.info(
@@ -691,7 +701,6 @@ if uploaded_file:
 
             # ③ Barras empilhadas por Diretoria (Teste como cor)
             with tabs[2]:
-                # Alternar entre Diretoria Executiva e Diretoria
                 nivel = st.radio("Agrupar por:", options=[
                                  "Diretoria", "Diretoria Executiva"], horizontal=True, index=0)
                 col_group = dir_col if nivel == "Diretoria" else dir_exec_col
@@ -704,7 +713,6 @@ if uploaded_file:
                     if data_stack.empty:
                         st.info("Sem dados para o gráfico empilhado.")
                     else:
-                        # Limitar Top N categorias de agrupamento
                         top_groups = data_stack.groupby(
                             col_group)["Ocorrencias"].sum().nlargest(top_n).index
                         data_stack = data_stack[data_stack[col_group].isin(
@@ -736,7 +744,6 @@ if uploaded_file:
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             for t in all_tests:
-                # Excel limita nome de aba a 31 chars
                 sheet_name = t.name[:31]
                 t.df.to_excel(writer, sheet_name=sheet_name, index=False)
                 autosize_columns(writer, sheet_name)
@@ -754,7 +761,6 @@ if uploaded_file:
     except Exception as e:
         st.error(f"Erro ao processar o arquivo: {e}")
 else:
-    # Caixa informativa INICIAL em VERDE-CLARO
     st.markdown(
         """
         <div class="info-green">
