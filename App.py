@@ -392,7 +392,7 @@ st.markdown(
     .stTextInput>div>div>input {{ background:var(--laranja-base)!important; color:var(--preto)!important; border:2px solid var(--laranja-borda)!important; border-radius:10px!important; box-shadow:var(--sombra)!important; }}
     .stTextInput>div>div>input::placeholder {{ color:#111827!important; opacity:.85; }}
     .stAlert {{ background:var(--laranja-base)!important; border:2px solid var(--laranja-borda)!important; color:var(--preto)!important; border-radius:12px!important; box-shadow:var(--sombra)!important; }}
-    div[data-testid="stMetric"] {{ background:var(--laranja-base)!important; border:2px solid var(--laranja-borda)!important; border-radius:var(--radius)!important; padding:14px!important; box-shadow:var(--sombra)!important; color:var(--preto)!important; }}
+    div[data-testid="stMetric"] {{ background:var(--laranja-base)!important; border:2px solid var(--laranja-borda)!important; border-radius:var(--radius)!important; padding:14px!important; box-shadow:var(--sombra)!important; color:#111827!important; }}
     details[data-testid="stExpander"] {{ border-radius:var(--radius)!important; overflow:hidden; border:0!important; box-shadow:var(--sombra)!important; }}
     details[data-testid="stExpander"] > summary {{ background:#fff!important; border-bottom:2px solid #f1f5f9!important; color:#0f172a!important; padding:10px 12px!important; font-weight:800; }}
     .toolbar {{ display:flex; gap:12px; align-items:center; }}
@@ -874,7 +874,7 @@ if uploaded_file:
                         formatted_df, use_container_width=True, hide_index=True)
 
         # =========================
-        # Gráficos: Itens reprovados
+        # 📈 Gráficos — Itens Reprovados
         # =========================
         st.subheader("📈 Gráficos — Itens Reprovados")
 
@@ -883,8 +883,7 @@ if uploaded_file:
                 "Nenhum item reprovado nos testes até o momento — gráficos não exibidos.")
         else:
             testes_disponiveis = sorted(
-                str(x) for x in fails_df["_Teste"].dropna().unique()
-            )
+                str(x) for x in fails_df["_Teste"].dropna().unique())
 
             with st.expander("⚙️ Opções de visualização", expanded=False):
                 testes_selecionados = st.multiselect(
@@ -954,42 +953,23 @@ if uploaded_file:
                                 size=26,
                             ).encode(
                                 color=alt.Color(
-                                    f"{dir_exec_col}:N",
-                                    legend=None,
-                                    scale=alt.Scale(range=EXEC_PALETTE),
-                                )
+                                    f"{dir_exec_col}:N", legend=None, scale=alt.Scale(range=EXEC_PALETTE))
                             )
 
                             chart = bars
-
                             if show_labels:
-                                labels = base.mark_text(
-                                    align="left",
-                                    dx=6,
-                                    fontWeight="bold",
-                                ).encode(
-                                    text="Ocorrencias:Q",
-                                    color=alt.value("#111827"),
+                                labels = base.mark_text(align="left", dx=6, fontWeight="bold").encode(
+                                    text="Ocorrencias:Q", color=alt.value("#111827")
                                 )
                                 chart = bars + labels
 
                             chart = chart.properties(
                                 height=max(260, 28 * len(data_exec_top)),
                                 width="container",
-                            ).configure_axisX(
-                                grid=False,
-                                labelFontSize=11,
-                                titleFontSize=12,
-                            ).configure_axisY(
-                                grid=False,
-                                labelFontSize=11,
-                                titleFontSize=12,
-                            ).configure_view(
-                                strokeWidth=0,
-                                fill="#f9fafb",
-                            ).configure(
-                                background="#f3f4f6"
-                            )
+                            ).configure_axisX(grid=False, labelFontSize=11, titleFontSize=12
+                                              ).configure_axisY(grid=False, labelFontSize=11, titleFontSize=12
+                                                                ).configure_view(strokeWidth=0, fill="#f9fafb"
+                                                                                 ).configure(background="#f3f4f6")
 
                             st.altair_chart(chart, use_container_width=True)
                     else:
@@ -1005,8 +985,7 @@ if uploaded_file:
                             st.info("Sem dados suficientes para o treemap.")
                         else:
                             unique_exec = list(
-                                pd.Series(data_tree[dir_exec_col].astype(
-                                    str).unique()).sort_values())
+                                pd.Series(data_tree[dir_exec_col].astype(str).unique()).sort_values())
                             color_map = {k: EXEC_PALETTE[i % len(
                                 EXEC_PALETTE)] for i, k in enumerate(unique_exec)}
                             try:
@@ -1039,10 +1018,7 @@ if uploaded_file:
 
                                 custom_exec = [top_ancestor(i) for i in ids]
                                 fig.data[0].customdata = custom_exec
-                                fig.data[0].hovertemplate = (
-                                    "<b>%{customdata}</b><br>"
-                                    "Ocorrências=%{value}<extra></extra>"
-                                )
+                                fig.data[0].hovertemplate = "<b>%{customdata}</b><br>Ocorrências=%{value}<extra></extra>"
 
                                 st.plotly_chart(fig, use_container_width=True)
                             except Exception:
@@ -1081,64 +1057,58 @@ if uploaded_file:
                                 top_groups)]
                             chart = (
                                 alt.Chart(data_stack)
-                                .mark_bar(cornerRadiusTopLeft=6,
-                                          cornerRadiusTopRight=6)
+                                .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
                                 .encode(
                                     x=alt.X(f"{col_group}:N",
                                             title=nivel, sort="-y"),
                                     y=alt.Y("sum(Ocorrencias):Q",
                                             title="Ocorrências"),
-                                    color=alt.Color(
-                                        "_Teste:N", title="Teste"),
+                                    color=alt.Color("_Teste:N", title="Teste"),
                                     tooltip=[
                                         alt.Tooltip(
                                             f"{col_group}:N", title=nivel),
-                                        alt.Tooltip(
-                                            "_Teste:N", title="Teste"),
-                                        alt.Tooltip(
-                                            "Ocorrencias:Q", title="Ocorrências"),
+                                        alt.Tooltip("_Teste:N", title="Teste"),
+                                        alt.Tooltip("Ocorrencias:Q",
+                                                    title="Ocorrências"),
                                     ],
                                 )
                                 .properties(height=380, width="container")
-                                .configure_axisX(
-                                    grid=False,
-                                    labelFontSize=11,
-                                    titleFontSize=12,
-                                )
-                                .configure_axisY(
-                                    grid=False,
-                                    labelFontSize=11,
-                                    titleFontSize=12,
-                                )
-                                .configure_view(
-                                    strokeWidth=0,
-                                    fill="#f9fafb",
-                                )
-                                .configure(
-                                    background="#f3f4f6"
-                                )
+                                .configure_axisX(grid=False, labelFontSize=11, titleFontSize=12)
+                                .configure_axisY(grid=False, labelFontSize=11, titleFontSize=12)
+                                .configure_view(strokeWidth=0, fill="#f9fafb")
+                                .configure(background="#f3f4f6")
                             )
                             st.altair_chart(chart, use_container_width=True)
 
         # =========================
-        # Relatório Excel consolidado (mantido)
+        # 📦 Relatório Excel consolidado — GERAR SOB DEMANDA
         # =========================
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            for t in all_tests:
-                sheet_name = t.name[:31]
-                t.df.to_excel(writer, sheet_name=sheet_name, index=False)
-                autosize_columns(writer, sheet_name)
-        output.seek(0)
+        st.subheader("📦 Relatório Excel Consolidado")
+        if "consolidado_buffer" not in st.session_state:
+            st.session_state["consolidado_buffer"] = None
 
-        st.download_button(
-            label="📥 Baixar Relatório de Conformidade (todas as abas)",
-            data=output,
-            file_name="relatorio_conformidade.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True,
-        )
+        if st.button("⚙️ Gerar XLSX consolidado", use_container_width=True, type="primary"):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                for t in all_tests:
+                    sheet_name = t.name[:31]
+                    t.df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    autosize_columns(writer, sheet_name)
+            output.seek(0)
+            st.session_state["consolidado_buffer"] = output.getvalue()
+            del output
+            gc.collect()
+            st.success(
+                "Consolidado preparado! Use o botão abaixo para baixar. ✅")
+
+        if st.session_state["consolidado_buffer"] is not None:
+            st.download_button(
+                label="⬇️ Baixar Relatório de Conformidade (todas as abas)",
+                data=st.session_state["consolidado_buffer"],
+                file_name="relatorio_conformidade.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
 
     except Exception as e:
         st.error(f"Erro ao processar o arquivo: {e}")
