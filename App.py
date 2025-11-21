@@ -10,6 +10,7 @@ import os
 from typing import Optional, Iterable, List
 from dataclasses import dataclass
 from openpyxl.utils import get_column_letter
+import gc
 
 # =========================
 # Config da página
@@ -784,6 +785,10 @@ if uploaded_file:
         # =========================
         st.subheader("📊 Resultados dos Testes")
 
+        # espaço para armazenar buffers sob demanda
+        if "xlsx_buffers" not in st.session_state:
+            st.session_state["xlsx_buffers"] = {}
+
         for idx, t in enumerate(all_tests):
             with st.expander(f"{t.emoji} {t.name}", expanded=False):
                 if t.df.empty:
@@ -809,20 +814,34 @@ if uploaded_file:
                             unsafe_allow_html=True,
                         )
 
-                        buf = BytesIO()
-                        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-                            t.df.to_excel(
-                                writer, sheet_name="Dados", index=False)
-                            autosize_columns(writer, "Dados")
-                        buf.seek(0)
-                        st.download_button(
-                            "⬇️ XLSX",
-                            data=buf,
-                            file_name=f"{t.name}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True,
-                            key=f"dl_{idx}",
-                        )
+                        # ====== GERAR XLSX SOB DEMANDA ======
+                        buf_key = f"xlsx_{idx}"
+                        gerar = st.button(
+                            "⚙️ Gerar XLSX desta aba", key=f"gen_{idx}", use_container_width=True)
+                        if gerar:
+                            # Gera e guarda em memória (bytes) apenas quando solicitado
+                            buf = BytesIO()
+                            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                                t.df.to_excel(
+                                    writer, sheet_name="Dados", index=False)
+                                autosize_columns(writer, "Dados")
+                            buf.seek(0)
+                            st.session_state["xlsx_buffers"][buf_key] = buf.getvalue(
+                            )
+                            del buf
+                            gc.collect()
+                            st.success(
+                                "Arquivo preparado! Clique para baixar abaixo. ✅")
+
+                        if buf_key in st.session_state["xlsx_buffers"]:
+                            st.download_button(
+                                "⬇️ Baixar XLSX",
+                                data=st.session_state["xlsx_buffers"][buf_key],
+                                file_name=f"{t.name}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                                key=f"dl_{idx}",
+                            )
 
                     view_df = t.df.copy()
                     if q:
@@ -1102,7 +1121,7 @@ if uploaded_file:
                             st.altair_chart(chart, use_container_width=True)
 
         # =========================
-        # Relatório Excel consolidado
+        # Relatório Excel consolidado (mantido)
         # =========================
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
